@@ -18,3 +18,6 @@ assistant.db
 # Logs and OS junk
 *.log
 .DS_Store
+
+# Test scripts
+tests/

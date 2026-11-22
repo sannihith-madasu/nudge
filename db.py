@@ -64,3 +64,16 @@ def once(key):
         return True
     except sqlite3.IntegrityError:
         return False
+
+def usage_today(kind):
+    _run("""CREATE TABLE IF NOT EXISTS usage(
+        day TEXT, kind TEXT, n INTEGER DEFAULT 0, PRIMARY KEY(day, kind))""")
+    rows = _run("SELECT n FROM usage WHERE day=? AND kind=?",
+                (datetime.now().date().isoformat(), kind), fetch=True)
+    return rows[0]["n"] if rows else 0
+
+def bump_usage(kind):
+    usage_today(kind)  # makes sure the table exists
+    _run("""INSERT INTO usage(day, kind, n) VALUES (?,?,1)
+            ON CONFLICT(day, kind) DO UPDATE SET n = n + 1""",
+         (datetime.now().date().isoformat(), kind))
