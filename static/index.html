@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assistant</title>
+<style>
+  :root { --bg:#0e1116; --fg:#e8edf2; --dim:#8b97a5; --accent:#4ea1ff; --alert:#ff9f1c; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font-family: system-ui, sans-serif; cursor:none; overflow:hidden; }
+  .wrap { height:100%; padding:14px 20px; display:grid; grid-template-rows:auto 1fr; gap:8px; }
+  .top { display:flex; justify-content:space-between; align-items:baseline; }
+  #clock { font-size:72px; font-weight:700; letter-spacing:2px; }
+  #date { font-size:24px; color:var(--dim); }
+  .cols { display:grid; grid-template-columns:1fr 1fr; gap:24px; min-height:0; }
+  h2 { margin:0 0 6px; font-size:20px; color:var(--accent); text-transform:uppercase; letter-spacing:2px; }
+  .item { font-size:24px; padding:5px 0; border-bottom:1px solid #222a35;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .item small { color:var(--dim); font-size:18px; margin-left:8px; }
+  .empty { color:var(--dim); font-size:22px; }
+  #banner { position:fixed; inset:0; display:none; padding:30px; background:var(--alert); color:#111;
+    font-size:38px; font-weight:700; white-space:pre-line; line-height:1.25;
+    align-items:center; justify-content:center; text-align:center; }
+  #banner.show { display:flex; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { filter:brightness(0.8); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top"><div id="clock">--:--</div><div id="date"></div></div>
+  <div class="cols">
+    <div><h2>Today</h2><div id="events"></div></div>
+    <div><h2>Tasks</h2><div id="tasks"></div></div>
+  </div>
+</div>
+<div id="banner"></div>
+<script>
+function tick() {
+  const n = new Date();
+  document.getElementById("clock").textContent =
+    n.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+}
+function fill(id, items, render, emptyText) {
+  const el = document.getElementById(id);
+  el.innerHTML = items.length ? items.map(render).join("") : `<div class="empty">${emptyText}</div>`;
+}
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+async function refresh() {
+  try {
+    const s = await (await fetch("/api/state")).json();
+    document.getElementById("date").textContent = s.date;
+    fill("events", s.events, e => `<div class="item">${esc(e.time)} <small>${esc(e.title)}</small></div>`, "Nothing scheduled");
+    fill("tasks", s.tasks, t => `<div class="item">${esc(t.id + ". " + t.title)}${t.due ? `<small>${esc(t.due)}</small>` : ""}</div>`, "All clear");
+    const b = document.getElementById("banner");
+    if (s.banner) { b.textContent = s.banner; b.classList.add("show"); }
+    else { b.classList.remove("show"); }
+  } catch (e) { /* server restarting; try again next cycle */ }
+}
+tick(); setInterval(tick, 1000);
+refresh(); setInterval(refresh, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+# env
+.env
+
+# Virtual environments
+venv/
+.venv/
+
+# Cache
+__pycache__/
+*.pyc
+
+# Database
+assistant.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Logs and OS junk
+*.log
+.DS_Store
