@@ -24,6 +24,11 @@ RECHECK = {"check online", "check that online", "check that", "search that",
 WEB_HINTS = re.compile(r"\b(latest|news|headlines|score of|stock|share price|price of|who won|"
                        r"release date|forecast|weather|temperature|trending)\b", re.I)
 PERSONAL = re.compile(r"\b(i|i'm|im|i've|my|me|myself|mine)\b", re.I)
+REMIND = re.compile(r"^\s*(please\s+)?remind me\b", re.I)
+WHEN_STOP = {"at", "on", "by", "the", "in", "of", "next", "this", "a", "an", "am", "pm",
+             "and", "to", "from"}
+FIND_STOP = {"done", "with", "that", "thing", "finished", "just", "task", "tasks", "have",
+             "from", "this", "the", "did", "been", "completed"}
 
 # ---------- the prompt (static part first, so Ollama can cache it) ----------
 
@@ -32,40 +37,50 @@ PARSER_PROMPT = """You are the brain of a personal assistant on the user's Raspb
 Fields:
 - intent: one of
   add_event: something at a specific clock time (appointment, meeting, call, class), or "remind me ... at <time>".
-  add_task: a to-do with no clock time, or only a date/deadline ("by friday", "tomorrow").
+  add_task: a to-do with no clock time, or only a date/deadline ("by friday", "tomorrow"). "remind me to X" with no time is add_task.
   complete_task: the user says they finished/did a task from OPEN TASKS. Set task_id.
   list_today: asks what is on today / their schedule.
   list_tasks: asks what is pending / their to-dos.
-  ask_web: needs facts from the internet: news, current events, scores, prices, weather, anything recent, facts about specific people/places/products/companies, health/legal/money questions, "look up ...", or anything you could not know for sure.
-  chat: feelings, motivation, small talk, opinions, advice, thanks, simple explanations, writing help, anything about the user themselves.
-- title: short action phrase for add_event/add_task, WITHOUT any date or time words. Otherwise "".
-- when: the date/time words exactly as the user wrote them ("tomorrow at 3pm", "friday", "in 2 hours", "23rd"). "" if none. Never invent one.
+  ask_web: needs facts from the internet: news, current events, scores, prices, weather, anything recent, facts about specific people/places/products/companies, health/legal/money questions, "look up ...".
+  chat: feelings, struggling, procrastinating or feeling unmotivated ("i can't get started"), motivation, small talk, jokes, opinions, advice, thanks, simple explanations of how things work, writing help, anything about the user themselves. Never turn feelings into a task.
+- title: short action phrase for add_event/add_task, WITHOUT any date or time words. For every other intent: "".
+- when: date/time words copied exactly from the MESSAGE ("tomorrow at 3pm", "friday", "in 2 hours", "23rd"). Never use NOW. If the MESSAGE has no date or time words, when is "". For every other intent: "".
 - task_id: id from OPEN TASKS for complete_task, otherwise 0.
-- query: only for ask_web: the question rewritten to stand alone (max 15 words) with NO personal details. Otherwise "".
+- query: only for ask_web: the question rewritten to stand alone (max 15 words) with NO personal details or feelings. Otherwise "".
 - reply: only for chat. 1-3 short plain sentences, warm and direct. If you don't know something, say so. Never invent facts about the user's schedule. Otherwise "".
 
 People rarely say "add a task". Infer the intent from natural speech.
 If DRAFT is not "none", the user is probably correcting or completing it: keep the draft's title and intent unless they change them, and put only the new date/time words in "when". If the message is clearly about something else, ignore the draft.
 
 Examples:
-MESSAGE: i have a dentist appointment tomorrow at 3
-{"intent":"add_event","title":"dentist appointment","when":"tomorrow at 3","task_id":0,"query":"","reply":""}
-MESSAGE: gotta submit the report by friday
-{"intent":"add_task","title":"submit the report","when":"friday","task_id":0,"query":"","reply":""}
-MESSAGE: remind me to call mom at 7pm
-{"intent":"add_event","title":"call mom","when":"7pm","task_id":0,"query":"","reply":""}
-MESSAGE: just finished buying milk   (OPEN TASKS: 4. buy milk)
-{"intent":"complete_task","title":"buy milk","when":"","task_id":4,"query":"","reply":""}
-MESSAGE: what do i have today?
+MESSAGE: i have a haircut thursday at 5
+{"intent":"add_event","title":"haircut","when":"thursday at 5","task_id":0,"query":"","reply":""}
+MESSAGE: gotta send the invoice by monday
+{"intent":"add_task","title":"send the invoice","when":"monday","task_id":0,"query":"","reply":""}
+MESSAGE: remind me to stretch
+{"intent":"add_task","title":"stretch","when":"","task_id":0,"query":"","reply":""}
+MESSAGE: remind me to take my medicine at 9pm
+{"intent":"add_event","title":"take my medicine","when":"9pm","task_id":0,"query":"","reply":""}
+MESSAGE: finished the laundry   (OPEN TASKS: 7. do laundry)
+{"intent":"complete_task","title":"do laundry","when":"","task_id":7,"query":"","reply":""}
+MESSAGE: anything on tonight?
 {"intent":"list_today","title":"","when":"","task_id":0,"query":"","reply":""}
-MESSAGE: what's the latest news on the mars mission
-{"intent":"ask_web","title":"","when":"","task_id":0,"query":"latest news on the Mars mission","reply":""}
-MESSAGE: is it safe to take ibuprofen with paracetamol
-{"intent":"ask_web","title":"","when":"","task_id":0,"query":"is it safe to take ibuprofen with paracetamol","reply":""}
-MESSAGE: i'm feeling really low today
-{"intent":"chat","title":"","when":"","task_id":0,"query":"","reply":"I'm sorry today feels heavy. Want to try one tiny thing, just five minutes on something easy, and see how you feel after?"}
-MESSAGE: on the 23rd   (DRAFT: add_task, title "clear phone storage")
-{"intent":"add_task","title":"clear phone storage","when":"23rd","task_id":0,"query":"","reply":""}
+MESSAGE: who won the match last night
+{"intent":"ask_web","title":"","when":"","task_id":0,"query":"who won the match last night","reply":""}
+MESSAGE: should i take paracetamol for a headache
+{"intent":"ask_web","title":"","when":"","task_id":0,"query":"is paracetamol safe to take for a headache","reply":""}
+MESSAGE: stressed about exams, any news on the jee results?
+{"intent":"ask_web","title":"","when":"","task_id":0,"query":"latest news on JEE results","reply":""}
+MESSAGE: i keep putting off my project
+{"intent":"chat","title":"","when":"","task_id":0,"query":"","reply":"That happens to everyone. What is the smallest first step, something you could do in five minutes? Start there."}
+MESSAGE: ugh i'm so bored and unmotivated
+{"intent":"chat","title":"","when":"","task_id":0,"query":"","reply":"Rough patch. Pick the easiest thing on your list and give it five minutes, then see how you feel."}
+MESSAGE: how does wifi work
+{"intent":"chat","title":"","when":"","task_id":0,"query":"","reply":"Wi-Fi sends data as radio waves between your device and a router, which is connected to the internet."}
+MESSAGE: make it saturday   (DRAFT: add_event, title "gym", when "friday at 6")
+{"intent":"add_event","title":"gym","when":"saturday","task_id":0,"query":"","reply":""}
+MESSAGE: next week   (DRAFT: add_task, title "book flights")
+{"intent":"add_task","title":"book flights","when":"next week","task_id":0,"query":"","reply":""}
 """
 
 SCHEMA = {
@@ -130,6 +145,16 @@ def resolve(when_text, base_date=None):
             dt = dt.replace(hour=dt.hour + 12)
     return dt.replace(second=0, microsecond=0), has_time
 
+
+def grounded(when_text, text):
+    """True if the date words really come from the user's message (small models sometimes
+    copy the NOW line from the prompt instead)."""
+    low = text.lower()
+    toks = [t for t in re.findall(r"[a-z]+|\d+", when_text.lower()) if t not in WHEN_STOP]
+    if not toks:
+        return True
+    return sum(1 for t in toks if t in low) / len(toks) >= 0.5
+
 # ---------- formatting ----------
 
 
@@ -180,7 +205,7 @@ def save(p):
     return f"Saved: {p['title']}"
 
 
-def find_task(task_id, title):
+def find_task(task_id, title, text=""):
     tasks = db.open_tasks()
     for t in tasks:
         if t["id"] == task_id:
@@ -190,7 +215,9 @@ def find_task(task_id, title):
         hits = [t for t in tasks if name in t["title"].lower() or t["title"].lower() in name]
         if len(hits) == 1:
             return hits[0]
-    return None
+    words = {w for w in re.findall(r"[a-z]{4,}", f"{title} {text}".lower()) if w not in FIND_STOP}
+    hits = [t for t in tasks if any(w in t["title"].lower() for w in words)]
+    return hits[0] if len(hits) == 1 else None
 
 # ---------- the local LLM call ----------
 
@@ -238,8 +265,9 @@ async def warm():
 async def local_answer(question, st, note=""):
     raw = await llm.chat(
         [{"role": "system", "content":
-          "You are a friendly, concise assistant on a Raspberry Pi with no internet access. "
-          "Answer in 1-3 plain sentences. If you are not sure, say so instead of guessing."},
+          "You are Nudge, a warm, concise personal assistant on a Raspberry Pi with no internet "
+          "access. Answer in 1-3 plain sentences. If the user is struggling, be kind and suggest "
+          "one tiny next step. If you are not sure of a fact, say so instead of guessing."},
          {"role": "user", "content": question}],
         temperature=0.5, max_tokens=150)
     return note + raw.strip()
@@ -300,7 +328,13 @@ async def act(data, text, st):
     title = (data.get("title") or "").strip()
     when_text = (data.get("when") or "").strip()
 
-    # safety net: obvious web topics the model filed under chat (never for personal messages)
+    # guard 1: date words must come from the user's message, not be invented
+    if when_text and not grounded(when_text, text):
+        when_text = ""
+    # guard 2: "remind me to X" with no time is a task, not an event
+    if intent == "add_event" and not when_text and REMIND.match(text):
+        intent = "add_task"
+    # guard 3: obvious web topics the model filed under chat (never for personal messages)
     if intent == "chat" and WEB_HINTS.search(text) and not PERSONAL.search(text):
         intent = "ask_web"
 
@@ -309,7 +343,7 @@ async def act(data, text, st):
     if intent == "list_tasks":
         return tasks_text()
     if intent == "complete_task":
-        t = find_task(data.get("task_id") or 0, title)
+        t = find_task(data.get("task_id") or 0, title, text)
         if not t:
             return "Which task did you finish? Say 'done N'.\n" + tasks_text()
         db.complete_task(t["id"])
@@ -320,7 +354,10 @@ async def act(data, text, st):
         return await ask_web((data.get("query") or "").strip() or text, st)
 
     st["last_q"] = text
-    return (data.get("reply") or "").strip() or "Hmm, I'm not sure what to say to that."
+    reply = (data.get("reply") or "").strip()
+    if not reply:                       # guard 4: the model forgot to write a chat reply
+        reply = await local_answer(text, st)
+    return reply
 
 
 def remember(st, user_text, bot_text):

@@ -11,7 +11,7 @@ async def chat(messages, schema=None, temperature=0.0, max_tokens=220, model=Non
         "messages": messages,
         "stream": False,
         "keep_alive": KEEP,
-        "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": 2048},
+        "options": {"temperature": temperature, "num_predict": max_tokens, "num_ctx": 3072},
     }
     if schema:
         body["format"] = schema
